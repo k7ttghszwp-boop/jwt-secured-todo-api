@@ -1,0 +1,293 @@
+<!doctype html>
+<html lang="tr">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>MyFirstApi - Todo Web</title>
+    <style>
+        body {
+            font-family: system-ui, Arial;
+            max-width: 900px;
+            margin: 24px auto;
+            padding: 0 16px;
+        }
+
+        .row {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        input,
+        button {
+            padding: 10px 12px;
+            font-size: 14px;
+        }
+
+        input {
+            min-width: 220px;
+        }
+
+        button {
+            cursor: pointer;
+        }
+
+        .card {
+            border: 1px solid #ddd;
+            border-radius: 10px;
+            padding: 14px;
+            margin: 12px 0;
+        }
+
+        .muted {
+            color: #666;
+            font-size: 13px;
+        }
+
+        .todo {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 0;
+            border-bottom: 1px solid #eee;
+        }
+
+        .todo:last-child {
+            border-bottom: none;
+        }
+
+        .done {
+            text-decoration: line-through;
+            color: #777;
+        }
+
+        .pill {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 999px;
+            border: 1px solid #ddd;
+            font-size: 12px;
+        }
+
+        .error {
+            color: #b00020;
+            white-space: pre-wrap;
+        }
+
+        .ok {
+            color: #0a7b2a;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Todo Web</h1>
+    <p class="muted">API: <span id="apiBaseLabel"></span></p>
+
+    <div class="card">
+        <h2>1) Login</h2>
+        <div class="row">
+            <input id="username" placeholder="Username" value="admin" />
+            <input id="password" placeholder="Password" value="123456" type="password" />
+            <button id="btnLogin">Login (Token al)</button>
+            <button id="btnLogout">Logout</button>
+        </div>
+        <p class="muted">Token durumu: <span id="tokenStatus" class="pill"></span></p>
+        <div id="loginMsg"></div>
+    </div>
+
+    <div class="card">
+        <h2>2) Todo işlemleri</h2>
+        <div class="row">
+            <input id="newTitle" placeholder="Yeni todo başlığı" />
+            <button id="btnAdd">Ekle</button>
+            <button id="btnRefresh">Yenile</button>
+        </div>
+        <div class="row" style="margin-top:10px;">
+            <input id="search" placeholder="Search (title)" />
+            <select id="isCompleted">
+                <option value="">Hepsi</option>
+                <option value="true">Tamamlandı</option>
+                <option value="false">Beklemede</option>
+            </select>
+            <select id="sortBy">
+                <option value="id">sortBy: id</option>
+                <option value="title">sortBy: title</option>
+            </select>
+            <select id="sortDir">
+                <option value="desc">desc</option>
+                <option value="asc">asc</option>
+            </select>
+            <input id="pageSize" type="number" value="10" min="1" max="100" style="width:110px;" />
+            <button id="btnApply">Filtre uygula</button>
+        </div>
+
+        <div id="todosMsg" class="muted" style="margin-top:10px;"></div>
+        <div id="todos" style="margin-top:10px;"></div>
+    </div>
+
+    <script>
+        // ✅ Burayı API portuna göre değiştir
+        // Swagger'daki base URL neyse onu yaz: örn http://localhost:5146
+        const API_BASE = "http://localhost:5146";
+
+        document.getElementById("apiBaseLabel").textContent = API_BASE;
+
+        const tokenKey = "myfirstapi_token";
+
+        function getToken() { return localStorage.getItem(tokenKey); }
+        function setToken(t) { localStorage.setItem(tokenKey, t); renderTokenStatus(); }
+        function clearToken() { localStorage.removeItem(tokenKey); renderTokenStatus(); }
+
+        function renderTokenStatus() {
+            const el = document.getElementById("tokenStatus");
+            el.textContent = getToken() ? "Var ✅" : "Yok ❌";
+        }
+
+        async function api(path, { method = "GET", body = null } = {}) {
+            const headers = { "Content-Type": "application/json" };
+            const t = getToken();
+            if (t) headers["Authorization"] = `Bearer ${t}`;
+
+            const res = await fetch(`${API_BASE}${path}`, {
+                method,
+                headers,
+                body: body ? JSON.stringify(body) : null
+            });
+
+            const text = await res.text();
+            let data = null;
+            try { data = text ? JSON.parse(text) : null; } catch { data = text; }
+
+            if (!res.ok) {
+                const msg = typeof data === "string" ? data : JSON.stringify(data, null, 2);
+                throw new Error(`${res.status} ${res.statusText}\n${msg}`);
+            }
+            return data;
+        }
+
+        function show(elId, html) { document.getElementById(elId).innerHTML = html; }
+
+        async function login() {
+            show("loginMsg", "");
+            const username = document.getElementById("username").value.trim();
+            const password = document.getElementById("password").value;
+
+            try {
+                const data = await api("/auth/login", { method: "POST", body: { username, password } });
+                setToken(data.access_token);
+                show("loginMsg", `<p class="ok">Login OK. Token alındı.</p>`);
+            } catch (e) {
+                show("loginMsg", `<p class="error">${e.message}</p>`);
+            }
+        }
+
+        async function loadTodos(page = 1) {
+            show("todos", "");
+            const search = document.getElementById("search").value.trim();
+            const isCompletedVal = document.getElementById("isCompleted").value;
+            const sortBy = document.getElementById("sortBy").value;
+            const sortDir = document.getElementById("sortDir").value;
+            const pageSize = Math.max(1, Math.min(100, parseInt(document.getElementById("pageSize").value || "10", 10)));
+
+            const params = new URLSearchParams();
+            params.set("page", String(page));
+            params.set("pageSize", String(pageSize));
+            params.set("sortBy", sortBy);
+            params.set("sortDir", sortDir);
+            if (search) params.set("search", search);
+            if (isCompletedVal !== "") params.set("isCompleted", isCompletedVal);
+
+            try {
+                const data = await api(`/todos?${params.toString()}`);
+                show("todosMsg", `Toplam: ${data.totalCount} | Sayfa: ${data.page}/${data.totalPages}`);
+                renderTodos(data.items);
+                renderPager(data.page, data.totalPages);
+            } catch (e) {
+                show("todosMsg", "");
+                show("todos", `<p class="error">${e.message}</p>`);
+            }
+        }
+
+        function renderPager(page, totalPages) {
+            let html = `<div class="row" style="margin-top:10px;">`;
+            html += `<button ${page <= 1 ? 'disabled' : ''} onclick="window.__go(${page - 1})">◀ Prev</button>`;
+            html += `<button ${page >= totalPages ? 'disabled' : ''} onclick="window.__go(${page + 1})">Next ▶</button>`;
+            html += `</div>`;
+            const wrap = document.createElement("div");
+            wrap.innerHTML = html;
+            document.getElementById("todos").prepend(wrap);
+        }
+        window.__go = (p) => loadTodos(p);
+
+        function renderTodos(items) {
+            const container = document.getElementById("todos");
+            if (!items || items.length === 0) {
+                container.innerHTML = `<p class="muted">Kayıt yok.</p>`;
+                return;
+            }
+
+            container.innerHTML = items.map(t => `
+      <div class="todo">
+        <div>
+          <span class="${t.isCompleted ? 'done' : ''}">${escapeHtml(t.title)}</span>
+          <span class="pill">#${t.id}</span>
+        </div>
+        <div class="row">
+          <button onclick="toggleDone(${t.id}, ${t.isCompleted})">${t.isCompleted ? 'Geri al' : 'Tamamla'}</button>
+          <button onclick="delTodo(${t.id})">Sil</button>
+        </div>
+      </div>
+    `).join("");
+        }
+
+        function escapeHtml(s) {
+            return String(s).replace(/[&<>"']/g, m => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" }[m]));
+        }
+
+        async function addTodo() {
+            const title = document.getElementById("newTitle").value.trim();
+            if (!title) return alert("Başlık boş olamaz.");
+            try {
+                await api("/todos", { method: "POST", body: { title } });
+                document.getElementById("newTitle").value = "";
+                await loadTodos(1);
+            } catch (e) {
+                alert(e.message);
+            }
+        }
+
+        async function toggleDone(id, current) {
+            // mevcut title'ı almak için listeden çekelim:
+            try {
+                const todo = await api(`/todos/${id}`);
+                await api(`/todos/${id}`, { method: "PUT", body: { title: todo.title, isCompleted: !current } });
+                await loadTodos(1);
+            } catch (e) {
+                alert(e.message);
+            }
+        }
+
+        async function delTodo(id) {
+            if (!confirm("Silinsin mi?")) return;
+            try {
+                await api(`/todos/${id}`, { method: "DELETE" });
+                await loadTodos(1);
+            } catch (e) {
+                alert(e.message);
+            }
+        }
+
+        document.getElementById("btnLogin").addEventListener("click", login);
+        document.getElementById("btnLogout").addEventListener("click", () => { clearToken(); show("loginMsg", ""); });
+        document.getElementById("btnAdd").addEventListener("click", addTodo);
+        document.getElementById("btnRefresh").addEventListener("click", () => loadTodos(1));
+        document.getElementById("btnApply").addEventListener("click", () => loadTodos(1));
+
+        renderTokenStatus();
+        loadTodos(1);
+    </script>
+</body>
+
+</html>
