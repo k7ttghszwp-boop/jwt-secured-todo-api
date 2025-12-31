@@ -2,7 +2,7 @@
 
 A secure Todo REST API built with ASP.NET Core Minimal API using JWT authentication.
 
-## 🚀 Features
+Features
 - JWT Authentication & Authorization
 - CRUD operations for Todo items
 - ASP.NET Core Minimal API
@@ -10,7 +10,7 @@ A secure Todo REST API built with ASP.NET Core Minimal API using JWT authenticat
 - SQLite with Entity Framework Core
 - CORS enabled
 
-## 🛠 Tech Stack
+Tech Stack
 - ASP.NET Core
 - Minimal API
 - JWT (JSON Web Token)
@@ -18,11 +18,12 @@ A secure Todo REST API built with ASP.NET Core Minimal API using JWT authenticat
 - SQLite
 - Swagger
 
-## 🔐 Authentication
+Authentication
 Login endpoint returns a JWT token.  
 Protected endpoints require:
 Authorization: Bearer <token>
-## 📌 Endpoints
+
+Endpoints
 - POST /auth/login
 - GET /todos
 - POST /todos
@@ -30,7 +31,7 @@ Authorization: Bearer <token>
 - PUT /todos/{id}
 - DELETE /todos/{id}
 
-## ▶️ Run Locally
+Run Locally
 ```bash
 dotnet restore
 dotnet run
